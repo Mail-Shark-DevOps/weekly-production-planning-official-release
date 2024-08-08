@@ -1,6 +1,8 @@
 import globalVar from "./globalVar.js";
 import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./universalFunctions.js";
 
+var showTitle = false; 
+
 //====================================================================================================================================================
     //#region BREAKOUT FUNCTION ----------------------------------------------------------------------------------------------------------------------
             
@@ -8,20 +10,8 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
          * Creates all the breakout sheets and tables, as well as formatting the cells inside each breakout table
          */
         async function breakout() {
-
             
-            // =======================================================================================================================================
-                // #region BREAKOUT HEADERS ----------------------------------------------------------------------------------------------------------
-                    $("#format-background").css("display", "flex");
-                    // Wait until they press "Go".
-                    await new Promise(resolve => {
-                        document.querySelector("#format-btn").addEventListener('click', resolve, { once: true });
-                    });
-                    globalVar.headerPrefix = $("#preview").val(); // Var to use this outside of this function.
 
-                    $("#format-background").css("display", "none");
-                // #endregion ------------------------------------------------------------------------------------------------------------------------
-            // =======================================================================================================================================
             deactivateEvents(); //turn off events
             //========================================================================================================================================
                 //#region SHOW LOADING SCREEN --------------------------------------------------------------------------------------------------------
@@ -68,7 +58,7 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                         let masterArr = masterBodyRange.values;
                         let masterHeader = masterHeaderRange.values;
                         let masterRowItems = masterTableRows.items;
-                        let masterArrCopy = JSON.parse(JSON.stringify(masterBodyRange.values));
+                        let masterArrCopy = JSON.parse(JSON.stringify(masterBodyRange.values))
 
                     //#endregion ---------------------------------------------------------------------------------------------------------------------
                 //====================================================================================================================================
@@ -229,26 +219,55 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                         });
 
                                     //#endregion -----------------------------------------------------------------------------------------------------
-                                //====================================================================================================================
+                                //================================= ===================================================================================
 
                             //#endregion -------------------------------------------------------------------------------------------------------------
                         //============================================================================================================================
                
                         //============================================================================================================================
                             //#region FOR EACH ROW IN MASTER, MOVE VALUES TO PROPER BREAKOUT ARRAY(S) ------------------------------------------------
+                                globalVar.masterCellData = {};
+
+                                for (let row of masterArr){
+
+                                    let rowUjid= row[22];
+
+                                    let rowArr = [];
+
+                                    //the following matches the master table headers with the data and column index in row [z], assigning each
+                                    //as a property to each header within the masterRowInfo object.
+
+                                    for (let name of masterHeader[0]) {
+                                        
+                                        // createRowInfo(masterHeader, name, masterRow, masterArrCopy, masterRowInfo, z, masterSheet);
+                                        const cellData = createRowInfo(masterHeader, name, row, null, null, z, masterSheet, true);
+
+                                        rowArr.push(cellData);
+                                        
+                                    };
+
+                                    globalVar.masterCellData[rowUjid] = rowArr;                                    
+
+                                    z++;
+
+                                };
+
+                                        
+                                await context.sync();
 
                                 for (let masterRow of masterArr) {
 
-                                    formsObj = {};
-                                    
                                     //================================================================================================================
                                         //#region CREATE ROW INFO OBJECT FOR CURRENT ROW IN MASTER ---------------------------------------------------
 
                                             //the following matches the master table headers with the data and column index in row [z], assigning each
                                             //as a property to each header within the masterRowInfo object.
+
                                             for (let name of masterHeader[0]) {
+                                                
                                                 createRowInfo(masterHeader, name, masterRow, masterArrCopy, masterRowInfo, z, masterSheet);
                                             };
+                                            
 
                                             z++;
 
@@ -266,8 +285,43 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
 
                                             let masterExtras = masterRowInfo["Extras"].value;
                                             let masterCutoff = masterRowInfo["Cutoff"].value;
+                                            let masterNotesColumnIndex = masterRowInfo["Notes"].columnIndex;
+
+                                            let masterNotes = masterRowInfo["Notes"].value;
+                                            let masterOptions = masterRowInfo["Options"].value;
+                                            let masterVersionNo = masterRowInfo["Version No"].value;
 
                                         //#endregion -------------------------------------------------------------------------------------------------
+                                    //================================================================================================================
+
+                                    //================================================================================================================
+                                        // #region COMBINE NOTES -------------------------------------------------------------------------------------
+
+                                            /* 
+                                                Explanation: This makes and array and joins the array based on how many items get added. This keeps 
+                                                the notes from having random " - " bits stuck on the end.
+                                            */
+                                            let arrayKeys = ["Notes", "Options", "Version No"]
+                                            let notesArr = new Array(); 
+                                            notesArr.push(masterNotes);
+
+                                            if (!/^(?:\s|,|\s*,\s*)$/.test(masterOptions)) {
+                                                notesArr.push(masterOptions);
+                                            }
+ 
+                                            if (!masterVersionNo.replace(/ /g, "") == "") {
+                                                notesArr.push(masterVersionNo);
+                                            }
+                                            if (notesArr.length == 1 ){
+                                                // If no version was pushed and no options were pushed...
+                                                masterRow[masterNotesColumnIndex] = masterNotes;
+                                            } else {
+                                            //    masterRow[masterNotesColumnIndex] = notesArr.map((n, i)=> `${arrayKeys[i]}: ${n}`).join(" - ");
+                                                masterRow[masterNotesColumnIndex] = notesArr.join(" - ")
+                                            }
+                                            
+
+                                        // #endregion ------------------------------------------------------------------------------------------------
                                     //================================================================================================================
 
                                     //================================================================================================================
@@ -279,15 +333,19 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                                 let formsFontColor = masterRowInfo[head].cellProps.value[0][0].format.font.color
                                                 let formsFontBold = masterRowInfo[head].cellProps.value[0][0].format.font.bold
                                                 let formsFontItalic = masterRowInfo[head].cellProps.value[0][0].format.font.italic
+                                                let formsValue = masterRowInfo[head].value
 
                                                 formsObj[head] = {
                                                     formsAddress,
                                                     formsFill,
                                                     formsFontColor,
                                                     formsFontBold,
-                                                    formsFontItalic
+                                                    formsFontItalic,
+                                                    formsValue
                                                 };
                                             };
+
+                                            let formsObjCopy = JSON.parse(JSON.stringify(formsObj));
 
                                         //#endregion -------------------------------------------------------------------------------------------------
                                     //================================================================================================================
@@ -303,11 +361,10 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                                         /* if form number is between 200 & 699, then it is a digital form and should be duplicated 
                                                         into its own digital breakout (without taking it away from any other breakout it might fall 
                                                         into, which is why it is outside of the if/else area below) */
-                                                        // if (masterForms > 201 && masterForms < 700) {
-                                                        if ((masterForms == "DIGITAL") || (masterForms > 201 && masterForms < 700)) {
-
+                                                        if ((masterForms == "DIGITAL") || masterForms >= 201 && masterForms <= 700) {
+                                                            // masterForms > 201 && masterForms < 700
                                                             digitalBreakout.push(masterRow);
-                                                            digitalFormatting.push(formsObj);
+                                                            digitalFormatting.push(formsObjCopy);
 
                                                             missingData["DIGITAL"].push(masterRow);
 
@@ -319,10 +376,10 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                                 //====================================================================================================
                                                     //#region PUSH TO SHIPPING BREAKOUT --------------------------------------------------------------
 
-                                                        if (masterType == "Shipping") { //if type is shipping, push to just shipping array
+                                                        if (masterType == "Shipping" && (masterForms !== "IGNORE")) { //if type is shipping, push to just shipping array
 
                                                             shipping.push(masterRow);
-                                                            shippingFormatting.push(formsObj);
+                                                            shippingFormatting.push(formsObjCopy);
 
                                                             missingData["Shipping"].push(masterRow);
 
@@ -332,10 +389,9 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                                 //====================================================================================================
                                                     //#region PUSH TO IGNORE BREAKOUT (IF TYPE IS IGNORE) --------------------------------------------
 
-                                                        } else if (masterType == "Ignore") {
-
+                                                        } else if (masterType == "Ignore" || masterForms == "IGNORE") {
                                                             ignore.push(masterRow);
-                                                            ignoreFormatting.push(formsObj);
+                                                            ignoreFormatting.push(formsObjCopy);
 
                                                             missingData["IGNORE"].push(masterRow);
 
@@ -404,36 +460,21 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                                         } else if (masterForms == "MISSING") { 
 
                                                             missing.push(masterRow);
-                                                            missingFormatting.push(formsObj);
+                                                            missingFormatting.push(formsObjCopy);
 
                                                             missingData["MISSING"].push(masterRow);
                                                             filteredData[masterType].push(masterRow);
-                                                            globalVar.normalBreakoutsFormatting[masterType].push(formsObj);
+                                                            globalVar.normalBreakoutsFormatting[masterType].push(formsObjCopy);
 
                                                     //#endregion -------------------------------------------------------------------------------------
                                                 //====================================================================================================
 
                                                 //====================================================================================================
-                                                    //#region PUSH TO IGNORE BREAKOUT (IF FORM IS IGNORE) --------------------------------------------
-
-                                                        } else if (masterForms == "IGNORE") {
-
-                                                            // console.log("I need to be ignored");
-                                                            ignore.push(masterRow);
-                                                            ignoreFormatting.push(formsObj);
-
-                                                            missingData["IGNORE"].push(masterRow);
-
-                                                    //#endregion -------------------------------------------------------------------------------------
-                                                //====================================================================================================
-
-                                                //====================================================================================================
-                                                    //#region PUSH TO PRINTED BREAKOUT ---------------------------------------------------------------
-
+                                                    //#region PUSH TO PRINTED BREAKOUT (IF FORM IS IGNORE) --------------------------------------------
                                                         } else if (masterForms == "PRINTED") {
 
                                                             printed.push(masterRow);
-                                                            printedFormatting.push(formsObj);
+                                                            printedFormatting.push(formsObjCopy);
 
                                                             missingData["PRINTED"].push(masterRow);
 
@@ -443,10 +484,22 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                                 //====================================================================================================
                                                     //#region PUSH TO NORMAL BREAKOUTS ---------------------------------------------------------------
 
-                                                        } else { //if neither shipping type nor has extras or cutoffs, treat normally
+                                                        } else if (masterForms == "APPAREL") {
+
+                                                            filteredData['Apparel'].push(masterRow);
+                                                            globalVar.normalBreakoutsFormatting['Apparel'].push(formsObjCopy);
+
+                                                    //#endregion -------------------------------------------------------------------------------------
+                                                //====================================================================================================
+
+                                                //====================================================================================================
+                                                    //#region PUSH TO NORMAL BREAKOUTS ---------------------------------------------------------------
+
+                                                        } else { 
+                                                            //if neither shipping type nor has extras or cutoffs, treat normally
                                                             filteredData[masterType].push(masterRow);
-                                                            globalVar.normalBreakoutsFormatting[masterType].push(formsObj);
-                                                            // normalFormatting.push(formsObj);
+                                                            globalVar.normalBreakoutsFormatting[masterType].push(formsObjCopy);
+                                                            // normalFormatting.push(formsObjCopy);
                                                         };
 
                                                     //#endregion -------------------------------------------------------------------------------------
@@ -500,8 +553,26 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                     emptyWarning();
 
                                     return;
-
                                 };
+
+                                if (document.querySelector("#breakout").textContent == "Breakout" || showTitle == true){
+ 
+                                    // ===============================================================================================================
+                                        // #region BREAKOUT HEADERS ----------------------------------------------------------------------------------
+                                            $("#loading-background").css("display", "none");
+                                            $("#format-background").css("display", "flex");
+                                            // Wait until they press "Go".
+                                            await new Promise(resolve => {
+                                                document.querySelector("#format-btn").addEventListener('click', resolve, { once: true });
+                                            });
+                                            globalVar.headerPrefix = $("#preview").val(); // Var to use this outside of this function.
+                        
+                                            $("#format-background").css("display", "none");
+                                            $("#loading-background").css("display", "flex");
+                                        // #endregion ------------------------------------------------------------------------------------------------
+                                    // ===============================================================================================================
+
+                                    }
 
                             //#endregion -------------------------------------------------------------------------------------------------------------
                         //============================================================================================================================
@@ -514,13 +585,14 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                             
                                         let columnsToHide = [];
 
-                                        let missingTable = addSheetAndTable("MISSING", allSheets, missingData, masterHeader, "Missing");
+                                        let missingTable = addSheetAndTable("MISSING", allSheets, missingData, masterHeader, "Missing", masterRowInfo);
 
-                                        let printedTable = addSheetAndTable("PRINTED", allSheets, missingData, masterHeader, "Printed");
+                                        let printedTable = addSheetAndTable("PRINTED", allSheets, missingData, masterHeader, "Printed", masterRowInfo);
 
-                                        let ignoreTable = addSheetAndTable("IGNORE", allSheets, missingData, masterHeader, "Ignore");
+                                        let ignoreTable = addSheetAndTable("IGNORE", allSheets, missingData, masterHeader, "Ignore", masterRowInfo);
 
-                                        let digitalTable = addSheetAndTable("DIGITAL", allSheets, missingData, masterHeader, "Digital");
+                                        let digitalTable = addSheetAndTable("DIGITAL", allSheets, missingData, masterHeader, "Digital", masterRowInfo);
+
 
                                     //#endregion -----------------------------------------------------------------------------------------------------
                                 //====================================================================================================================
@@ -540,29 +612,81 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                     //#endregion -----------------------------------------------------------------------------------------------------
                                 //====================================================================================================================
 
+                                let missingSortedValues = missingTable.table.getDataBodyRange().load("values");
+                                let printedSortedValues = printedTable.table.getDataBodyRange().load("values");
+                                let ignoreSortedValues = ignoreTable.table.getDataBodyRange().load("values");
+                                let digitalSortedValues = digitalTable.table.getDataBodyRange().load("values");
+
+
                                 await context.sync();
+
+                                let missingSorted = missingSortedValues.values;
+                                let printedSorted = printedSortedValues.values;
+                                let ignoreSorted = ignoreSortedValues.values;
+                                let digitalSorted = digitalSortedValues.values;
+
+
+                                let missingSortedTableData = missingSorted.map(row => {
+                                    let obj = {};
+                                    row.forEach((cell, index) => {
+                                        obj[masterHeader[0][index]] = cell;
+                                    });
+                                    return obj;
+                                });
+
+                                let printedSortedTableData = printedSorted.map(row => {
+                                    let obj = {};
+                                    row.forEach((cell, index) => {
+                                        obj[masterHeader[0][index]] = cell;
+                                    });
+                                    return obj;
+                                });
+
+                                let ignoreSortedTableData = ignoreSorted.map(row => {
+                                    let obj = {};
+                                    row.forEach((cell, index) => {
+                                        obj[masterHeader[0][index]] = cell;
+                                    });
+                                    return obj;
+                                });
+
+                                let digitalSortedTableData = digitalSorted.map(row => {
+                                    let obj = {};
+                                    row.forEach((cell, index) => {
+                                        obj[masterHeader[0][index]] = cell;
+                                    });
+                                    return obj;
+                                });
 
                                 //====================================================================================================================
                                     //#region FORMAT CELLS IN THE CUSTOM BREAKOUT TABLES -------------------------------------------------------------
 
+
                                         let theMissingFormat = styleCells(
-                                            missingTable.table, missingFormatting, missingRowCount.value, masterHeader, "MISSING"
+                                            missingTable.table, missingFormatting, missingRowCount.value, masterHeader, "MISSING", missingSortedTableData
                                         );
                                         let thePrintedFormat = styleCells(
-                                            printedTable.table, printedFormatting, printedRowCount.value, masterHeader, "PRINTED"
+                                            printedTable.table, printedFormatting, printedRowCount.value, masterHeader, "PRINTED", printedSortedTableData
                                         );
                                         let theIgnoreFormat = styleCells(
-                                            ignoreTable.table, ignoreFormatting, ignoreRowCount.value, masterHeader, "IGNORE"
+                                            ignoreTable.table, ignoreFormatting, ignoreRowCount.value, masterHeader, "IGNORE", ignoreSortedTableData
                                         );
                                         let theDigitalFormat = styleCells(
-                                            digitalTable.table, digitalFormatting, digitalRowCount.value, masterHeader, "DIGITAL"
+                                            digitalTable.table, digitalFormatting, digitalRowCount.value, masterHeader, "DIGITAL", digitalSortedTableData
                                         );
+
+                                        context.workbook.tables.getItem("Digital").sort.apply([
+                                            { key: 0, ascending: true } // '0' is the column number for 'Form'
+                                        ]);
+                                        
                                         /* let theShippingFormat = styleCells(
                                             shippingTable.table, shippingFormatting, shippingRowCount.value, masterHeader, "Shipping"
                                         );*/
 
                                     //#endregion -----------------------------------------------------------------------------------------------------
                                 //====================================================================================================================
+
+                                await context.sync();
 
                                 //====================================================================================================================
                                     //#region HIDE CERTAIN COLUMNS IN THE CUSTOM BREAKOUTS -----------------------------------------------------------
@@ -676,15 +800,41 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                                     //#endregion -------------------------------------------------------------------------------------
                                                 //====================================================================================================
 
+                                                let tableSortedValues = thisTable.table.getDataBodyRange().load("values");
+
+
                                                 await context.sync();
+
+                                                let sortedValues = tableSortedValues.values;
+
+                                                let sortedTableData = sortedValues.map(row => {
+                                                    let obj = {};
+                                                    row.forEach((cell, index) => {
+                                                        obj[masterHeader[0][index]] = cell;
+                                                    });
+                                                    return obj;
+                                                });
 
                                                 //====================================================================================================
                                                     //#region FORMAT CELLS IN TYPE BREAKOUT ----------------------------------------------------------
-
                                                         let theNormalFormat = styleCells(
                                                             thisTable.table, globalVar.normalBreakoutsFormatting[line], normalRowCount.value, 
-                                                            masterHeader, tableName
+                                                            masterHeader, tableName, sortedTableData
                                                         );
+
+                                                        if (tableName.match(/\bDIGITAL\b/gi)){
+                                                            context.workbook.tables.getItem("Digital").sort.apply([
+                                                                { key: 0, ascending: true } // '0' is the column number for 'Form'
+                                                            ]);
+                                                        } else if (tableName== "Fold Only"){
+                                                            context.workbook.tables.getItem("FoldOnly").sort.apply([
+                                                                { key: 5, ascending: true }, // '5' is the column number for 'product'
+                                                                { key: 6, ascending: true },  // '6' is the column number for 'company'
+                                                                { key: 3, ascending: true },  // '3' is the column number for 'code'
+                                                            ]);
+                                                        }
+                                                        
+                                                        await context.sync();
 
                                                     //#endregion -------------------------------------------------------------------------------------
                                                 //====================================================================================================
@@ -751,18 +901,38 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
                                     //#endregion -----------------------------------------------------------------------------------------------------
                                 //====================================================================================================================
 
+
+                                let shippingSortedValues = shippingTable.table.getDataBodyRange().load("values");
+
                                 await context.sync();
+
+                                let shippingSorted = shippingSortedValues.values;
+
+                                let shippingSortedTableData = shippingSorted.map(row => {
+                                    let obj = {};
+                                    row.forEach((cell, index) => {
+                                        obj[masterHeader[0][index]] = cell;
+                                    });
+                                    return obj;
+                                });
 
                                 //====================================================================================================================
                                     //#region FORMAT SHIPPING BREAKOUT -------------------------------------------------------------------------------
 
-                                        let theShippingFormat = styleCells(
-                                            shippingTable.table, shippingFormatting, shippingRowCount.value, masterHeader, "Shipping"
-                                        );
+                                       
+                                            let theShippingFormat = styleCells(
+                                                shippingTable.table, shippingFormatting, shippingRowCount.value, masterHeader, "Shipping", shippingSortedTableData
+                                            );
+
+                                            context.workbook.tables.getItem("Shipping").sort.apply([
+                                                { key: 0, ascending: true } // '0' is the column number for 'Form'
+                                            ]);
+                                        
 
                                     //#endregion -----------------------------------------------------------------------------------------------------
                                 //====================================================================================================================
 
+                                await context.sync();
                                 //====================================================================================================================
                                     //#region HIDE CERTAIN COLUMNS IN SHIPPING BREAKOUT --------------------------------------------------------------
                                 
@@ -826,7 +996,7 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
          * @param {Excel Table Object} table The table object that you wish to hide some columns in
          * @param {Array} hideColArr The columns that you wish to hide, in an array
          */
-        function hideColumns(table, hideColArr) {
+        async function hideColumns(table, hideColArr) {
             for (let column of hideColArr) {
                 let thisColumn = table.columns.getItem(column).getRange();
                 thisColumn.columnHidden = true;
@@ -860,7 +1030,12 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
          * @param {String} sheetName The name of the table
          * @returns An array of objects
          */  
-        function styleCells(table, formattingArr, rowCount, headerValues, sheetName) {
+        function styleCells(table, formattingArr, rowCount, headerValues, sheetName, sortedData) {
+
+
+            if (sheetName == "PlasticLine") {
+                console.log("PLASTIC!");
+            };
 
             let tempObj = {};
 
@@ -873,43 +1048,107 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
             };
 
             for (let u = 0; u < rowCount; u++) {
+                //the problem is the u variable being 1 ahead of the v variable
 
                 try {
 
-                    let arrRow = formattingArr[u];
+
+                    //let arrRow = formattingArr[u];
+
+                    //let currentRow = formattingArr[u]['UJID'].formsValue;
 
                     let thisRow = table.rows.getItemAt(u).getRange();
 
-                    for (let v = 0; v < headerValues.length; v++) {
-
-                        try {
-                            let cell = thisRow.getCell(0, v).load("address");
-                            cell.format.fill.color = arrRow[headerValues[v]].formsFill;
-                            cell.format.font.color = arrRow[headerValues[v]].formsFontColor;
-                            cell.format.font.bold = arrRow[headerValues[v]].formsFontBold;
-                            cell.format.font.italic = arrRow[headerValues[v]].formsFontItalic;
+                    let currentRow = sortedData[u]['UJID'];
+            
 
 
-                            tempObj = {
-                                sheet: sheetName,
-                                index: u,
-                                cell: cell,
-                                fill: arrRow[headerValues[v]].formsFill,
-                                fontColor: arrRow[headerValues[v]].formsFontColor,
-                                fontBold: arrRow[headerValues[v]].formsFontBold,
-                                fontItalic: arrRow[headerValues[v]].formsFontItalic
-                            };
+                    //! The first row in the formattingArr is actually the second row in the table for some reason (the first row seems to be missing)
+                    //! thisRow is getting the first row in the table, so the wrong formatting is being applied to the first row it seems
 
-                            allFormattedCells.push(tempObj);
+                    //! Also formattingArr is not sorted like the actual table is, so a Z-Shelf item that is at the bottom of the excel table is not in the formattingArr
 
-                        } catch (e) {
-                            // console.log(`The value of v at error: ${v}`);
-                            console.log(e);
-                            loadError(e.stack)
-                        };
+                    let rowProperties = "";
 
-                    };
+                    // Functional Array Method ↓
+                    // arr.find(v => itemRow === targetValue) ; → [{... found value}]
+                    // let foundValue = Find the item in globalVar.masterCellData where itemRow == targetValue
+                    // let cell = thisRow.getCell(0, v).load("address");
+                    // cell.format.fill ...
 
+
+
+                    let rowFormats = globalVar.masterCellData[currentRow];
+
+                    // Using the headerValues variable because its index will always match the column number.
+                    rowFormats.forEach((cell, i)=>{
+                        // Take thisRow
+                        let unFormatted = thisRow.getCell(0, i).load("address"); // An Unformatted cell.
+                        let currentCellProps = cell.cellProps.value[0][0];
+
+                        unFormatted.format.fill.color = currentCellProps.format.fill.color;
+                        unFormatted.format.font.color = currentCellProps.format.font.color;
+                        unFormatted.format.font.bold = currentCellProps.format.font.bold;
+                        unFormatted.format.font.italic = currentCellProps.format.font.italic;
+                        unFormatted.format.wrapText = true;
+                    });
+
+                    //use the newProperties below instead of arrRow[headerValues[v]]
+
+
+
+
+
+
+                    // for (let v = 0; v < headerValues.length; v++) {
+
+                    //     try {
+                    //         // let cell = thisRow.getCell(0, v).load("address");
+                    //         // cell.format.fill.color = arrRow[headerValues[v]].formsFill;
+                    //         // cell.format.font.color = arrRow[headerValues[v]].formsFontColor;
+                    //         // cell.format.font.bold = arrRow[headerValues[v]].formsFontBold;
+                    //         // cell.format.font.italic = arrRow[headerValues[v]].formsFontItalic;
+                    //         // cell.format.wrapText = true;
+
+                    //         let cell = thisRow.getCell(0, v).load("address");
+                    //         cell.format.fill.color = rowProperties.format.fill.color;
+                    //         cell.format.font.color = rowProperties.format.font.color;
+                    //         cell.format.font.bold = rowProperties.format.font.bold;
+                    //         cell.format.font.italic = rowProperties.format.font.italic;
+                    //         cell.format.wrapText = true;
+
+
+                    //         // tempObj = {
+                    //         //     sheet: sheetName,
+                    //         //     index: u,
+                    //         //     cell: cell,
+                    //         //     fill: arrRow[headerValues[v]].formsFill,
+                    //         //     fontColor: arrRow[headerValues[v]].formsFontColor,
+                    //         //     fontBold: arrRow[headerValues[v]].formsFontBold,
+                    //         //     fontItalic: arrRow[headerValues[v]].formsFontItalic,
+                    //         //     wrapText: true,
+                    //         // };
+
+                    //         tempObj = {
+                    //             sheet: sheetName,
+                    //             index: u,
+                    //             cell: cell,
+                    //             fill: rowProperties.format.fill.color,
+                    //             fontColor: rowProperties.format.font.color,
+                    //             fontBold: rowProperties.format.font.bold,
+                    //             fontItalic: rowProperties.format.font.italic,
+                    //             wrapText: true,
+                    //         };
+
+                    //         allFormattedCells.push(tempObj);
+
+                    //     } catch (e) {
+                    //         // console.log(`The value of v at error: ${v}`);
+                    //         console.log(e);
+                    //         loadError(e.stack)
+                    //     };
+
+                    // };
                 } catch (e) {
                     console.log(e);
                     loadError(e.stack)
@@ -931,16 +1170,21 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
          * Sets the specified sheet up with the print settings that Tyndra typically uses
          * @param {Excel Sheet Object} sheet The sheet that you wish to apply print settings to
          */
-        function printSettings(sheet) {
+function printSettings(sheet) {
+            /*
+            Currently they are vertically & horizontally centered. Just keep horizontal, remove vertical centering. Also change Margin Top to 0.5� and Margin Bottom to 0.25�
+            */
             sheet.pageLayout.rightMargin = 0;
             sheet.pageLayout.leftMargin = 0;
-            sheet.pageLayout.topMargin = 0;
-            sheet.pageLayout.bottomMargin = 0;
+            sheet.pageLayout.topMargin = 0.5;
+            sheet.pageLayout.bottomMargin = 0.25;
             sheet.pageLayout.headerMargin = 0;
             sheet.pageLayout.footerMargin = 0;
 
+            sheet.pageLayout.paperSize = "Legal";
+
             sheet.pageLayout.centerHorizontally = true;
-            sheet.pageLayout.centerVertically = true;
+            sheet.pageLayout.centerVertically = false;
 
             let pageLayoutZoomOptions = {
                 'horizontalFitToPages': 1,
@@ -968,9 +1212,14 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
          * @param {Object} filteredData An object containing all the row values for the sheet that is going to be made
          * @param {Array} masterHeader An array of arrays containing the header values for the master sheet
          * @param {String} tableName What you want the table's name to be
+         * @param {Object} masterRowInfo Information on the master row
          * @returns 
          */
-        function addSheetAndTable(line, allSheets, filteredData, masterHeader, tableName) {
+         function addSheetAndTable(line, allSheets, filteredData, masterHeader, tableName, masterRowInfo) {
+
+             if (line == "Plastic Line") {
+                 console.log("Break here");
+             };
 
             let table = "";
             let tableColumnLetter = "";
@@ -995,7 +1244,7 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
             let mergedTitleRange = sheet.getRange("A1"); //get range of the new title row
 
             //set formatting values of the title cell
-            // console.log("Format Func:", globalVar.headerPrefix)
+            // console.log("Format Func:", line)
             mergedTitleRange.values = [[`${globalVar.headerPrefix} ${line}`]];
             mergedTitleRange.format.autofitColumns();
             mergedTitleRange.format.horizontalAlignment = "center";
@@ -1020,24 +1269,117 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
             };
 
             //the table data for this line
-            let tryThis = filteredData[line];
+            let currentSheet = filteredData[line];
+
+            sheet.getUsedRange().format.autofitColumns();
+            sheet.getUsedRange().format.autofitRows();
+
+            // Here's the silliness. Here we go...
+            let rangeA = sheet.getRange("A1"); // Stretch out Forms
+            rangeA.format.columnWidth = 55; // Pixel numbers get doubled apparently?
+
+            let rangeB = sheet.getRange("B1"); // Stretch out Type
+            rangeB.format.columnWidth = 70;
+
+            let rangeC = sheet.getRange("C1"); // Stretch out Rep
+            rangeC.format.columnWidth = 65;
+
+            let rangeD = sheet.getRange("D1"); // Stretch out AS
+            rangeD.format.columnWidth = 65;
+
+            let rangeF = sheet.getRange("F1"); // Stretch out Product
+            rangeF.format.columnWidth = 100;
+
+            let rangeI = sheet.getRange("I1"); // Stretch out Email
+            rangeI.format.columnWidth = 170;
+
+            let rangeV = sheet.getRange("V1"); // Stretch out UPS Info
+            rangeV.format.columnWidth = 90;
+
+            let rangeW = sheet.getRange("W1"); // Stretch out UPS Info
+            rangeW.format.columnWidth = 80;
+
+
+            const rangeA_E = sheet.getRange("A:E");
+            const rangeJ_Q = sheet.getRange("J:Q");
+
+            rangeA_E.format.horizontalAlignment = "Center";
+            rangeJ_Q.format.horizontalAlignment = "Center";
 
             //if the table data for the line is empty, push the empty sheet and table variables to the sheetAndTable object for referencing later
-            if (tryThis == "") {
+            if (currentSheet == "") {
                 sheet.activate();
                 sheetAndTable.sheet = sheet;
                 sheetAndTable.table = table;
                 return sheetAndTable;
-            };
+            }
+
+            // MA/UA Sort ----------------------------------------------------------------------------------------------------------------------------
+            let uaRows = currentSheet.filter(row => row[0]=="UA");
+
+            uaRows.forEach(row => {
+
+                // Remove this row from currentSheet
+                currentSheet.splice(currentSheet.indexOf(row), 1)
+
+                // Get the target row from 4th col
+                let ref = row[18].split("-")[1]
+
+
+                // Find the row in currentSheet that has the ref value as the 3rd index
+                let refRow = currentSheet.find(row => row[4] === Number(ref))
+                let targetIndex = currentSheet.indexOf(refRow)
+                // Add this row after the row at the target index
+                currentSheet.splice(targetIndex + 1, 0, row)
+
+            })
 
             //adds the line info from filteredData as rows to the end of the table
-            table.rows.add(null /*add rows to the end of the table*/, tryThis);
+            table.rows.add(null /*add rows t o the end of the table*/, currentSheet);
 
-            //autofit rows and columns in sheet
-            if (Office.context.requirements.isSetSupported("ExcelApi", "1.2")) {
-                sheet.getUsedRange().format.autofitColumns();
-                sheet.getUsedRange().format.autofitRows();
-            };
+            // Type (B), EDDM (P), Order Status (Q), Version No (S), Artwork (T), Options (U), & UJID (W)
+            const columnsToHide = ['B', 'P', 'Q', 'S', 'T', 'U', 'W'];
+            columnsToHide.forEach(column => {
+                const hideRange = sheet.getRange(`${column}:${column}`);
+                hideRange.columnHidden = true;
+            });            
+
+             // Have Digital and Shipping Breakouts sorted by Form numbers. For Fold Only Breakout, sort by product, then by company
+             
+
+            // Move Z-shelf to the bottom.
+            let indexes = []
+            let zRows = currentSheet.filter((row, i) => {
+                if (row[0] == "ZSHELF") {
+                    indexes.push(i)
+                    return row 
+                }
+            });
+
+            let formattingRows = globalVar.normalBreakoutsFormatting[line];
+            
+            zRows.forEach(row => {
+
+                // Remove this row from currentSheet
+                currentSheet.splice(currentSheet.indexOf(row), 1)
+
+                // Add to the end.
+                currentSheet.push(row)
+            })
+
+            // Sorting the formattingRows
+            indexes.sort((a, b) => b - a);
+
+            // Sort formattingRows so that the items at the indexes in the array "indexes" are at the bottom
+            let elementsToMove = indexes.map(index => formattingRows.splice(index, 1)[0]);
+            if (elementsToMove.length > 0) {
+                formattingRows.push(...elementsToMove);
+            }             
+
+            // Post sort. format.
+            // masterRowInfo['UJID'].value
+
+
 
             sheet.activate();
 
@@ -1082,7 +1424,6 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
 
             } else {
 
-                // console.log(globalVar.result);
                 return globalVar.result;
 
             };
@@ -1110,13 +1451,16 @@ import { deactivateEvents, activateEvents, createRowInfo, loadError } from "./un
 
             $("#set-to-ignore").on("click", () => {
                 console.log("setting to ignore...");
+                showTitle = true;
                 setBlanksToAllOther();
                 $("#empty-background").css("display", "none");
             });
 
             $("#handle-manually").on("click", () => {
                 console.log("letting user handle...");
+                showTitle = false;
                 $("#empty-background").css("display", "none");
+                activateEvents();
             });
 
         };

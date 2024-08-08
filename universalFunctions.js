@@ -119,11 +119,7 @@ import globalVar from "./globalVar.js";
                     objOfCells[0].format.font.color = "red";
                     // objOfCells[0].format.fill.color = "white";
                     objOfCells[0].format.fill.clear();
-                } else {
-                    objOfCells[0].format.fill.clear()
-                    objOfCells[0].format.font.color = "black"
-                    objOfCells[0].format.font.bold = false;
-                };
+                } ;
 
 
                 if (rowInfo[0].startsWith("Layout") || rowInfo[0].startsWith("Form") || rowInfo[0].startsWith("Tube")) {
@@ -149,8 +145,11 @@ import globalVar from "./globalVar.js";
                     } else if (rowInfo == "UA") { //make use art forms yellow
                         rowRange.format.fill.color = "#FFE699"
                         rowRange.format.font.color = "black"
-                    } else if (rowInfo == "DIGITAL") { //make use art forms yellow
+                    } else if (rowInfo == "DIGITAL") { //make use art forms green
                         rowRange.format.fill.color = "#97d1a8"
+                        rowRange.format.font.color = "black"
+                    } else if (rowInfo == "PRINTED") { //make printed forms mint green
+                        rowRange.format.fill.color = "#CBE0B2"
                         rowRange.format.font.color = "black"
                     } else { //make all other forms with text instead of numbers grey
                         rowRange.format.fill.color = "#BFBFBF"; //#FFF2CC
@@ -181,15 +180,25 @@ import globalVar from "./globalVar.js";
          * @param {Object} obj An empty object that will be loaded with all the current row data from the table matched to the column headers
          * @param {Number} rowIndex The index of the current row in the table
          * @param {Object} worksheet The worksheet object associated with the range
+         * @param {Boolean} toBeReturned If the end result should be an object that's returned or not.
          */
-        function createRowInfo(head, columnName, rowValues, copyTable, obj, rowIndex, worksheet) {
+
+        function createRowInfo(head, columnName, rowValues, copyTable, obj, rowIndex, worksheet, toBeReturned) {
+
+            // let rowArr;
+            // if (obj[columnName]){
+            //     // This already exists
+            //     rowArr = obj[columnName];
+            // } else {
+            //     rowArr=[];
+            // }
 
             let columnIndex = findColumnIndex(head, columnName);
 
             let value = rowValues[columnIndex];
 
             let cell = worksheet.getCell(rowIndex, columnIndex);
-
+            
             const cellProps = cell.getCellProperties({
                 address: true,
                 format: {
@@ -205,14 +214,34 @@ import globalVar from "./globalVar.js";
                 style: true
             });
 
-            // copyTable[rowIndex][columnIndex] = value;
+               //[ length of 22
+                    //{value: "", cellProps: ""} cell1
+                    //{value: "", cellProps: ""} cell2
+                    //{value: "", cellProps: ""} cell3
+                //]
 
-            obj[columnName] = {
-                columnIndex,
-                value,
-                cellProps
-            };
+            if (toBeReturned){
 
+
+                return {
+                    columnIndex,
+                    value,
+                    cellProps
+                };
+
+                // rowArr.push(newObj);
+
+                // obj[columnName] = rowArr;
+
+                // return 
+            } else {
+                obj[columnName] = {
+                    columnIndex,
+                    value,
+                    cellProps
+                };
+            }
+            
         };
 
     //#endregion -------------------------------------------------------------------------------------------------------------------------------------
@@ -281,9 +310,7 @@ import globalVar from "./globalVar.js";
          * @param {Function} callback The function the user is trying to execute
          */
         async function tryCatch(callback) {
-            //console.log("Error callback type is: ");
-            //console.log(typeof callback);
-            //if (typeof callback === 'function') {
+
             try {
                 await callback();
             } catch (err) {
@@ -304,6 +331,7 @@ import globalVar from "./globalVar.js";
          * @param {String} msg The error message
          */
         async function loadError(msg) {
+            const currentButton = document.querySelector("#breakout");
             document.querySelector("#err-background").style.display="flex";
             const errorScreen= document.querySelector("#error-message");
             errorScreen.innerHTML = `<span>Automatically generated report<br>${"-".repeat(10)}<br>${msg}</span>`;
@@ -311,6 +339,7 @@ import globalVar from "./globalVar.js";
 
     //#endregion -------------------------------------------------------------------------------------------------------------------------------------
 //====================================================================================================================================================
+
 
 
 export { deactivateEvents, activateEvents, createDataSet, conditionalFormatting, createRowInfo, refreshPivotTable, tryCatch, loadError };

@@ -10,14 +10,12 @@ import { updateE2RFromTaskpane, E2RHandler } from "./E2Rs.js";
 import { clearPSInfo, pressSchedulingInfoTable, pressSchedulerHandler, updateDataFromTable } from "./pressSchedulingInfo.js";
 import { breakout, removeBreakoutSheets } from "./breakout.js";
 
-
 //const { deactivateEvents, createDataSet, conditionalFormatting, createRowInfo } = require("./universalFunctions.js");
 //const { buildTabulatorTables, organizeData } = require("./tabulatorTables.js");
 //const { populateForms } = require("./populateForms.js");
 //const { updateE2RFromTaskpane, E2RHandler } = require("./E2Rs.js");
 //const { clearPSInfo, pressSchedulingInfoTable, pressSchedulerHandler, updateDataFromTable } = require("./pressSchedulingInfo.js");
 //const { breakout, removeBreakoutSheets } = require("./breakout.js");
-
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
 // ---------------------------------------------------------------------------------------------------------------------------------------------------
@@ -31,11 +29,27 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
                                                                 
 */
 
+
+// ===================================================================================================================================================
+    //#region Between Form Number Logic --------------------------------------------------------------------------------------------------------------
+        /**
+         * Determines if the form number is in range of min and max.
+         * @param {Number} min The beginning of the form range
+         * @param {Number} max The end of the form range
+         * @param {Number} test Current form number
+         * @returns {Boolean} True/False
+         */
+        function isBetween(min, max, test) {
+            return Number(test) > min && Number(test) < max;
+        }
+    //#endregion -------------------------------------------------------------------------------------------------------------------------------------
+// ===================================================================================================================================================
+
     //#region ----------------------------------------------------------------------------------------------------------------------------------------
 
         Office.onReady((info) => {
-
             
+                        
             //========================================================================================================================================
                 //#region BINDING THE MAIN TASKPANE BUTTONS ------------------------------------------------------------------------------------------
 
@@ -53,7 +67,6 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
 
                         document.getElementById("err-report").addEventListener("click", async function(){
 
-                            // return console.log(`${document.querySelector("#error-message").innerHTML}`)
                             const response = await fetch("https://devops.themailshark.net/api/submitForm", {
                                 method: "POST",
                                 headers: {
@@ -106,9 +119,14 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
                            
                         });
                         
-                        document.getElementById("hide-missing").addEventListener("click", function(){
+                        document.getElementById("hide-missing").addEventListener("click", function () {
                             location.reload();
-                        })
+                        });
+
+                        document.getElementById("hide-missing-prod-type").addEventListener("click", function () {
+                            $("#missing-product-types-background").css("display", "none");
+                            $("#missing-forms-background").css("display", "flex");
+                        });
 
                         document.getElementById("err-reload").addEventListener("click", function(){
                             location.reload();
@@ -137,7 +155,7 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
                             const preview = document.querySelector("#preview"); 
 
                             // The {var == "" ? "": " "} is to determine if a space needs added or not. If one of these is blank, we don't want extra spaces. Looks nasty, sorry! - Danny
-                            preview.value= `(${print}L) GRP ${group} WK ${week} INK ${inkstart} THRU ${inkend} / MAILS ${msweek} /`
+                            preview.value= `(${print}) GRP ${group} WK ${week} INK ${inkstart} THRU ${inkend} / MAILS ${msweek} /`
                         }
 
                         document.querySelector("#group").onkeyup = updatePreview;
@@ -152,7 +170,6 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
             //========================================================================================================================================
 
             try {Excel.run(async (context) => {
-
                 //====================================================================================================================================
                     //#region ASSIGNING SHEET VARIABLES ----------------------------------------------------------------------------------------------
 
@@ -604,11 +621,241 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
                 
                     //#endregion ---------------------------------------------------------------------------------------------------------------------
                 //====================================================================================================================================
-                
+
+
+                //====================================================================================================================================
+                // #region TABLE CHANGE EVENTS -------------------------------------------------------------------------------------------------------
+
+                function isBetweenInclusive(x, y, z) {
+                    return x <= y && y <= z;
+                    }
+
+                const tableAndSheetNames = {
+                    // Key = Worksheet Name.
+                    // Value: Table Name.
+                    "MISSING": "Missing",
+                    "Missing": "Missing", // Just in case
+                    "PRINTED": "Printed",
+                    "IGNORE": "Ignore",
+                    "DIGITAL": "Digital",
+                    "Postcard": "Postcard",
+                    "Scratch Off-Line": "ScratchoffLine",
+                    "Magnet Line": "MagnetLine",
+                    "Colossal": "Colossal",
+                    "MENU": "Menu",
+                    "Fold Only": "FoldOnly",
+                    "XL Ink Line": "XlInkLine",
+                    "MS-BS Flyer Line": "MsbsFlyerLine",
+                    "Plastic Line": "PlasticLine",
+                    "Envelope Inserter": "EnvelopeInserter",
+                    "Heidelberg Die-Cutter": "HeidelbergDiecutter",
+                    "Flatbed Die-Cutter": "FlatbedDiecutter",
+                    "MF Ink Line": "MfInkLine",
+                    "Apparel": "Apparel",
+                    "APPAREL": "Apparel", // For the Forms thing.
+                    "All Other": "AllOther",
+                    "Shipping": "Shipping"
+                }
+
+                masterTable.onChanged.add(async function(eventArgs){
+
+                    // ===============================================================================================================================
+                    async function moveTables(oldTableName, newTableName, changedRow) {
+                        if (!(tableAndSheetNames[newTableName].match(/\bMISSING\b/gi) )){
+                            // Remove from the Missing Table, if we're not moving to Missing. 
+                            // Doing this purely to account for items that may be in a product table and also the Missing table.
+                            for (let i = 0; i < missingRows.values.length; i++) {
+                                if (missingRows.values[i][22] === changedRow.values[0][22]) { 
+                                    missingTable.rows.getItemAt(i).delete();
+                                break;
+                                }
+                            }
+                        }
+                        
+                        
+                    
+                        const oldWorksheet = context.workbook.worksheets.getItem(oldTableName);
+                        const oldTable = oldWorksheet.tables.getItem(tableAndSheetNames[oldTableName]);
+                        const oldRows = oldTable.getDataBodyRange().load("values"); 
+                        await context.sync(); // <-- Error but only if the new value is Missing???
+                        for (let i = 0; i < oldRows.values.length; i++) {
+                            if (oldRows.values[i][22] === changedRow.values[0][22]) {
+                                oldTable.rows.getItemAt(i).delete();
+                            break;
+                            }
+                        }
+                    
+                        // Step 2: Add the row to the new worksheet
+                        const newWorksheet = context.workbook.worksheets.getItem(newTableName);
+                        const newTable = newWorksheet.tables.getItem(tableAndSheetNames[newTableName]);
+
+                        
+                        // Add the changed row to the new worksheet
+                        newTable.rows.add(null, [changedRow.values[0]]);
+                        await context.sync();
+                        console.log(`Row moved from ${oldTableName} to ${tableAndSheetNames[newTableName]}`);
+                        // End Move Table Function
+                    }
+
+                    
+                    async function updateTable(changedRow) {
+                        // let address = event.address;
+                        // let changedRange = changedWorksheet.getRange(address);
+                        try {
+                            await Excel.run(async (context) => {
+                                let tableNamesToUpdate = ["MISSING", "Shipping", "PRINTED", "IGNORE", "DIGITAL"]; /* Just look through these in all 
+                                                                                                                     updates just in case. */
+                                let columnBTableName = changedRow.values[0][1]; // It's ok if it updates twice-- That won't harm anything.
+
+                                // Add the table from column B to the list of tables to update
+                                tableNamesToUpdate.push(columnBTableName);
+                                
+                                for (let name of tableNamesToUpdate) {
+                                    try {
+                                        let changedProductTable = context.workbook.tables.getItem(tableAndSheetNames[name]);
+                                        let dataBodyRange = changedProductTable.getDataBodyRange();
+                                        // Queue a command to load the 'values' property for the dataBodyRange
+                                        dataBodyRange.load("values");
+                                        // Run the queued commands, and return a promise to indicate task completion
+                                        await context.sync();
+                                        
+                                        let newTableData = dataBodyRange.values.map((row, index) => {
+                                            if (row[22] == changedRow.values[0][22]) {
+                                                return changedRow.values[0];
+                                            }
+                                            return row;
+                                        });
+                                        
+                                        // Get the range again to update the values
+                                        // Set the values for the range
+                                        changedProductTable.getDataBodyRange().values = newTableData;
+                                        // Run the queued commands, and return a promise to indicate task completion
+                                        await context.sync();
+                                        
+                                    } catch (e) {
+                                        console.error(e);
+                                    }
+                                }
+                            });
+                        } catch (error) {
+                            console.error(error);
+                        }
+
+                        // End of Update Table Function
+                    }
+                    
+                    // ===============================================================================================================================
+
+                    console.log("Type Before:", eventArgs.details.valueTypeBefore);
+
+
+                    let sheet = context.workbook.worksheets.getActiveWorksheet();
+                    var rowNum = eventArgs.address.replace(/\D/g, '');
+                    var changedRow = sheet.getRange(`A${rowNum}:W${rowNum}`).load('values');
+                    // ---- //
+                    const missingWorksheet = context.workbook.worksheets.getItem("MISSING");
+                    const missingTable = missingWorksheet.tables.getItem("Missing");
+                    const missingRows = missingTable.getDataBodyRange().load("values");
+                    await context.sync();
+
+                    let tableName = changedRow.values[0][1];
+
+                    if (eventArgs.details.valueBefore == eventArgs.details.valueAfter) {
+                        console.log("onTableChange was triggered, but the value was not changed, so doing nothing...");
+                        return;
+                    };
+
+                    if (eventArgs.address.match(/A\d+/g)){
+                        // Changing Column A/Form type
+                        if (eventArgs.details.valueTypeAfter=="Empty"){
+                            // Cleared Column A. Don't worry about doing anything.
+                            console.log("Column A is now blank.")
+                            return;
+                        } else if (['IGNORE', 'APPAREL'].includes(eventArgs.details.valueAfter)){
+                            // Move to table that matches Column A
+                            // Delete line from Column B's table if it exists there currently
+                            console.log("Changing to Ignore or Apparel.");
+
+                            moveTables(tableName, eventArgs.details.valueAfter, changedRow); // changedRow.values[0][1] = Column B
+
+                        } else if (['MISSING', 'DIGITAL', 'ZSHELF', 'UA'].includes(eventArgs.details.valueAfter)){
+                            // Move to table that matches Column A.
+                            // Also move to table that matches Column B.
+                            await moveTables(tableName, eventArgs.details.valueAfter, changedRow);
+
+                        }
+                        else if(eventArgs.details.valueAfter == "PRINTED"){
+                            /* 
+                                If you update a form number to "PRINTED", it should update the data in the breakout sheet and also update the data in 
+                                the printed table.
+                            */
+
+                            updateTable(changedRow);
+                            let changedSheet= context.workbook.worksheets.getItem(tableName);
+                            const newWorksheet = context.workbook.worksheets.getItem(eventArgs.details.valueAfter);
+                            const newTable = newWorksheet.tables.getItem(tableAndSheetNames[eventArgs.details.valueAfter]);
+                            // Get the unique identifier from the changedRow (22nd key)
+                            const uniqueIdentifier = changedRow.values[0][21]; // Index 21 corresponds to the 22nd column
+
+                            // Load the rows from the newTable
+                            newTable.rows.load("items");
+                            await context.sync(); // Ensure the rows are loaded
+                            
+
+                            // Check if the unique identifier exists in newTable
+                            let rowExists = newTable.rows.items.some(row => row.values[0][21] === uniqueIdentifier);
+
+                            if (!rowExists) {
+                                console.log("Adding this row to:", tableName)
+                                // If the row does not exist, add it to the newTable
+                                newTable.rows.add(null, [changedRow.values[0]]);
+                                await context.sync(); // Synchronize the changes
+                            }
+                            conditionalFormatting(changedSheet, changedSheet.getRange(`A${rowNum}:W${rowNum}`), changedRow, null);
+
+                        }
+                        else {
+                            // Move to table that matches Column B
+                            // Get value of Column A before change and delete line from this table
+                            updateTable(changedRow);
+                            let prevTable = eventArgs.details.valueBefore == "" ? "MISSING" : eventArgs.details.valueBefore;
+                            const oldWorksheet = context.workbook.worksheets.getItem(prevTable);
+                            const oldTable = oldWorksheet.tables.getItem(tableAndSheetNames[prevTable]);
+                            const oldRows = oldTable.getDataBodyRange().load("values");
+                            await context.sync();
+                            
+                            for (let i = 0; i < oldRows.values.length; i++) {
+                                if (oldRows.values[i][22] == changedRow.values[0][22]) {
+                                    oldTable.rows.getItemAt(i).delete();
+                                break;
+                                }
+                            }
+                        }
+                        await context.sync();
+                    } else if (eventArgs.address.match(/B\d+/g)) {
+
+                        moveTables(eventArgs.details.valueBefore, eventArgs.details.valueAfter, changedRow);
+
+                    } else {
+                        
+                        try {
+                            updateTable(changedRow);
+                        } catch (e) {
+                            console.error(e)
+                        }
+                       
+                    
+
+                    }
+
+                });
+            // #endregion ------------------------------------------------------------------------------------------------------------------------
+            //====================================================================================================================================
 
             });} catch(e){
                 loadError(e.stack)
             }
+
             
         });
 
@@ -632,8 +879,7 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
 
 */
 
-    //#region ----------------------------------------------------------------------------------------------------------------------------------------
-
+//#region ----------------------------------------------------------------------------------------------------------------------------------------
         //============================================================================================================================================
             // #region LEGACY?: PAGE ARROWS ----------------------------------------------------------------------------------------------------------
 
@@ -662,7 +908,7 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
 
                         $("#select-tables").css("display", "none");
                         $("#week-tables").css("display", "none");
-                        $("#footer").css("display", "none");
+                        // $("#footer").css("display", "none");
 
                         $("#home-page").css("display", "flex");
 
@@ -676,7 +922,7 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
 
                         $("#select-tables").css("display", "block");
                         $("#week-tables").css("display", "flex");
-                        $("#footer").css("display", "flex");
+                        // $("#footer").css("display", "flex");
 
                         // currentPage = "Press Scheduling"
 
@@ -786,7 +1032,7 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
 
                             $("#select-tables").css("display", "block");
                             $("#week-tables").css("display", "flex");
-                            $("#footer").css("display", "flex");
+                            // $("#footer").css("display", "flex");
 
                             // currentPage = "Press Scheduling";
 
@@ -795,7 +1041,7 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
 
                             $("#select-tables").css("display", "none");
                             $("#week-tables").css("display", "none");
-                            $("#footer").css("display", "none");
+                            // $("#footer").css("display", "none");
 
                             $("#home-page").css("display", "flex");
 
@@ -935,10 +1181,11 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
                                 if (event.details == undefined) {
                                     console.log("Event is undefined");
                                     return;
-                                } else {
-                                    console.log("The Event is: ");
-                                    console.log(event);
-                                };
+                                }
+                                //  else {
+                                //     console.log("The Event is: ");
+                                //     console.log(event);
+                                // };
 
                             //#endregion -------------------------------------------------------------------------------------------------------------
                         //============================================================================================================================
@@ -1419,6 +1666,39 @@ import { breakout, removeBreakoutSheets } from "./breakout.js";
 
             //#endregion -----------------------------------------------------------------------------------------------------------------------------
         //============================================================================================================================================
+
+        //============================================================================================================================================
+        // #region MOVE ROWS -------------------------------------------------------------------------------------------------------------------------
+            /**
+            * Moves a row from one table to another.
+            * @param {Excel.Table} sourceTable - The table to remove the row from.
+            * @param {Excel.Table} targetTable - The table to add the row to.
+            * @param {Array} rowData - The data of the row to be moved.
+            */
+            async function moveTableRow(sourceTable, targetTable, rowData) {
+                // Load the source table rows and sync context
+                const sourceRows = sourceTable.getDataBodyRange().load("values");
+                await Excel.run(async (context) => {
+                    await context.sync();
+                    
+                    // Find and remove the row from the source table
+                    for (let i = 0; i < sourceRows.values.length; i++) {
+                        if (sourceRows.values[i][0] === rowData[0]) { // Assuming unique identifier in Column A
+                            sourceTable.rows.getItemAt(i).delete();
+                            break;
+                        }
+                    }
+                    
+                    // Add the row to the target table
+                    targetTable.rows.add(null, [rowData]);
+                    
+                    // Sync the context to reflect changes
+                    await context.sync();
+                });
+            }
+        // #endregion --------------------------------------------------------------------------------------------------------------------------------
+        //============================================================================================================================================
+
 
     //#endregion -------------------------------------------------------------------------------------------------------------------------------------
        
